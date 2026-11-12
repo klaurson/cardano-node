@@ -1,0 +1,70 @@
+#!/bin/sh
+# Apply the Cardano relay. The only switch is PROFILE in .env.
+set -eu
+cd "$(dirname "$0")"
+
+if [ -f .env ]; then
+  profile_line=$(grep -E '^[[:space:]]*PROFILE=' .env | tail -n 1 || true)
+  if [ -n "$profile_line" ]; then
+    PROFILE=${profile_line#*=}
+    PROFILE=$(printf '%s' "$PROFILE" | tr -d '[:space:]"'"'"'')
+  fi
+fi
+
+PROFILE=${PROFILE:-testnet}
+
+# Official cardano-node 11.0.1 ships V2InMemory for both networks. Release
+# 11.0.1 has known LSM bugs, so neither profile changes the ledger backend.
+# The image launcher already passes +RTS -N2. GHCRTS adds the heap cap on top.
+case "$PROFILE" in
+  testnet)
+    # Hetzner CX23: 2 vCPU, 4 GB RAM, 40 GB disk.
+    # Cardano testnet minimum: 2 cores, 4 GB RAM, 20 GB disk.
+    NETWORK=preprod
+    MEM_LIMIT=3g
+    CPUS=1.5
+    GHCRTS='-M2400M'
+    DISK_FLOOR_GB=20
+    ;;
+  mainnet)
+    # Hetzner CX53: 16 vCPU, 32 GB RAM, 320 GB disk.
+    # Official mainnet minimum: 24 GB RAM with the InMemory backend,
+    # 300 GB free disk (350 GB recommended for growth).
+    NETWORK=mainnet
+    MEM_LIMIT=30g
+    CPUS=14
+    GHCRTS='-M26G'
+    DISK_FLOOR_GB=300
+    ;;
+  *)
+    echo "PROFILE must be testnet or mainnet (got: ${PROFILE})" >&2
+    exit 1
+    ;;
+esac
+
+export PROFILE NETWORK MEM_LIMIT CPUS GHCRTS
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker is not installed. Install Docker Engine, then run ./apply again." >&2
+  exit 1
+fi
+
+if [ "$#" -eq 0 ]; then
+  set -- up -d
+fi
+
+case "$1" in
+  up|start)
+    avail_kb=$(df -Pk /var/lib/docker 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -z "${avail_kb:-}" ]; then
+      avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+    fi
+    avail_gb=$((avail_kb / 1024 / 1024))
+    if [ "$avail_gb" -lt "$DISK_FLOOR_GB" ]; then
+      echo "warning: ${avail_gb} GiB free on this machine; the ${PROFILE} profile needs about ${DISK_FLOOR_GB} GiB free for the chain." >&2
+    fi
+    ;;
+esac
+
+echo "profile=${PROFILE} network=${NETWORK} memory=${MEM_LIMIT} heap=${GHCRTS} cpus=${CPUS}" >&2
+exec docker compose "$@"

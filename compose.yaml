@@ -1,0 +1,42 @@
+# Relay only. One service, two profiles. ./apply reads PROFILE from .env and
+# fills NETWORK, GHCRTS, MEM_LIMIT, and CPUS. The image is official stable
+# cardano-node 11.0.1 (linux/amd64). The 11.1.0 and 11.2 pre-releases are not
+# used here.
+
+name: cardano-node
+
+services:
+  cardano-node:
+    image: ghcr.io/intersectmbo/cardano-node:11.0.1@sha256:007da778998d0bdb043fb834c62b9da1c95e33610f31f6f9cccab29a945e2b99
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 120s
+    environment:
+      NETWORK: ${NETWORK:?run ./apply}
+      GHCRTS: ${GHCRTS:?run ./apply}
+    mem_limit: ${MEM_LIMIT:?run ./apply}
+    memswap_limit: ${MEM_LIMIT:?run ./apply}
+    cpus: ${CPUS:?run ./apply}
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    ports:
+      - "${PORT:-3001}:3001"
+    volumes:
+      - node-db:/data
+      - node-ipc:/ipc
+    labels:
+      org.cardano.profile: ${PROFILE:?run ./apply}
+      org.cardano.network: ${NETWORK:?run ./apply}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  node-db:
+    name: cardano-node-${NETWORK:?run ./apply}-db
+  node-ipc:
+    name: cardano-node-${NETWORK:?run ./apply}-ipc

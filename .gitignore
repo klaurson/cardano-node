@@ -1,0 +1,17 @@
+# Chain data and the node socket live in Docker volumes, never in git.
+db/
+ipc/
+*.socket
+cardano-node.stats
+*.stats
+
+# This repo is a relay. Stake-pool and wallet material stays off the machine
+# that runs it, and out of git.
+*.skey
+*.vkey
+*.cert
+*.seed
+*.addr
+secrets/
+keys/
+*.mnemonic
